@@ -33,7 +33,7 @@ library(stringi)
 ```{r load_its2_profiles}
 
 ##load in combined Anooj run and Trinity run metadata
-sam0 <- read.csv("keys_symbiont_metadata.csv", row.names=1)%>%
+sam0 <- read.csv("keysdata/keys_symbiont_metadata.csv", row.names=1)%>%
   clean_names()
 
 sam1 <- as.matrix(sam0)
@@ -42,7 +42,7 @@ sam <- sample_data(data.frame(sam1))
 
 #load in profiles from Anooj run (historical and 2020/2021 contemporary)
 tax0 <- read_tsv(
-  file = "500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt",
+  file = "keysdata/500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt",
   n_max = 6) %>%
   dplyr::select(-2) %>% 
   gather(UID, value, -1) %>% 
@@ -54,7 +54,7 @@ tax <- tax_table(tax1)
 
 #load in profiles from Trinity run (2024 contemporary)
 tax10 <- read_tsv(
-  file = "606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt",
+  file = "keysdata/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt",
   n_max = 6) %>%
   dplyr::select(-2) %>% 
   gather(UID, value, -1) %>% 
@@ -67,7 +67,7 @@ taxx <- tax_table(tax11)
 
 #load in profiles for OTU analysis from Anooj run (historical and 2020/2021 contemporary )
 otu0 <- read_tsv(
-  file = "500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt") %>% 
+  file = "keysdata/500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt") %>% 
   rename(sample_name = "...2") %>%
   dplyr::select(-1) %>%
   slice(7:n()) %>%
@@ -78,7 +78,7 @@ otu <- otu_table(otu1, taxa_are_rows = FALSE)
 
 #load in profiles for OTU analysis from Trinity run (2024 contemporary)
 otu10 <- read_tsv(
-  file = "606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt") %>% 
+  file = "keysdata/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt") %>% 
   rename(sample_name = "...2") %>%
   dplyr::select(-1) %>%
   slice(7:n()) %>%
@@ -129,11 +129,11 @@ prop<-df3%>%
   group_by(species_code, era)%>%
  mutate(
     total = n())+
-  summarise(
-    total_A = sum(df3$clade == "A", na.rm = TRUE),
-    total_B =sum(clade=="B", na.rm=TRUE),
-    total_C=sum(clade=="C", na.rm=TRUE),
-    total_D=sum(clade=="D", na.rm=TRUE)
+  summarize(
+    total_A = sum(clade == "A", na.rm = TRUE),
+    total_B = sum(clade=="B", na.rm=TRUE),
+    total_C = sum(clade=="C", na.rm=TRUE),
+    total_D = sum(clade=="D", na.rm=TRUE)
   )
 
 prop <- df3 %>%
@@ -176,11 +176,27 @@ prop_long<-prop_long%>%filter(species_code!="UNK")
 #write csv 
 write.csv(prop_long, file="replicates_keys_proportion.csv")
 
+prop_long_filtered <- prop_long %>%
+  group_by(species_code, era) %>%
+  slice(1) %>%  # ensure one row per species_code-era for total
+  group_by(species_code) %>%
+  filter(n_distinct(era) == 3, all(total >= 5)) %>%
+  ungroup() %>%
+  semi_join(prop_long, ., by = c("species_code", "era")) %>%
+  mutate(clade = factor(clade, levels = c("C", "B", "A", "D")))
 
 
 #plot 
-ggplot(prop_long, aes(x=era, y=prop, fill=clade))+geom_col(alpha=0.8)+facet_nested(~ species_code)+ylab("Proportion of Colonies")+
-  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+xlab("")
+prop_long_filtered2 <- prop_long_filtered %>% filter(species_code %in% c("CNAT", "DLAB", "OFAV", "PSTR"))
+ggplot(prop_long_filtered2, aes(x=era, y=prop, fill=clade))+geom_col(alpha=0.8)+facet_nested(~ species_code)+ylab("Proportion of Colonies")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+xlab("") +
+  scale_fill_manual(values = c(
+  "#2A9D8F",  # cool: teal green
+  "#457B9D",   # cool: desaturated blue
+  "#F4A261",  # warm: muted orange
+  "#E63946")) + # warm: soft crimson
+  scale_x_discrete(labels = c("2003", "2023", "2024"))
+
 
 
 
