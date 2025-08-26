@@ -120,6 +120,41 @@ ggplot(df3, aes(x=era, fill=clade))+geom_bar(alpha=1)+facet_wrap(~species_code)
 
 ```
 
+# Get just dominant symbiont (>50% relative abundance within each sample)
+```{r}
+df3dom <- df3 %>%
+  group_by(sample_name) %>%
+  filter(Abundance == max(Abundance))
+
+df3dom %>%
+  group_by(species_code) %>%
+  summarise(doms = paste(unique(clade), collapse = ", ")) %>%
+  arrange(species_code) %>%
+  print(n = nrow(.))
+
+# Check out new records
+# DLAB with A -- KL-250, R414, R339
+df3dom %>%
+  filter(species_code == "DLAB", clade == "A")
+# present in one historcal and two post-2023 (still recovering from bleaching?)
+df3 %>% filter(sample_name == "KL-250")
+
+# PCLI with A --
+df3dom %>%
+  filter(species_code == "PCLI", clade == "A")
+# present in one post-2023 (still recovering from bleaching?)
+
+# PSTR with A --
+df3dom %>%
+  filter(species_code == "PSTR", clade == "A")
+# present in two post-2023 (still recovering from bleaching?)
+```
+
+
+
+
+
+
 ```{r proportions, fig.width=15,fig.height=10}
 
 #now we want to calculate the proportions of each sample size that is D so we can plot change in proportion over eras/years 
@@ -167,7 +202,7 @@ prop_long <- prop %>%
   #ungroup()
 
 #prop_long<-prop_long%>%
-  filter(total>=10)
+#  filter(total>=10)
 
 #remove species code UNK
 prop_long<-prop_long%>%filter(species_code!="UNK")
@@ -245,4 +280,38 @@ ggplot(prop_longy, aes(x=year, y=prop, fill=clade))+geom_col(alpha=0.8)+facet_ne
 
 ```
 
+
+
+```{r}
+df3 %>%
+  filter(!species_code == "UNK") %>%
+  filter(!era == "contemporary_post2023") %>%
+  distinct(era, collection_site, species_code) %>%
+  arrange(collection_site, species_code, era)
+
+df3f <- df3 %>%
+  filter(species_code != "UNK",
+         era != "contemporary_post2023") %>%
+  group_by(collection_site, species_code, era) %>%
+  tally(name = "n_obs") %>%
+  ungroup() %>%
+  # keep only species with ≥3 in each era at that site
+  group_by(collection_site, species_code) %>%
+  filter(all(c("historical", "contemporary_pre2023") %in% era),
+         min(n_obs) >= 3) %>%
+  ungroup() %>%
+  # join back to keep full records from df3
+  inner_join(df3, by = c("collection_site", "species_code", "era"))
+
+df3f_summary <- df3f %>%
+  group_by(collection_site, species_code, era, clade) %>%
+  summarise(n = n(), .groups = "drop")
+
+ggplot(df3f_summary, aes(x = era, y = n, fill = clade)) +
+  geom_col(position = "stack") +
+  facet_grid(species_code ~ collection_site, scales = "free_y") +
+  labs(x = "Era", y = "Count of clade") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
