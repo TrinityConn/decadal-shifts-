@@ -138,6 +138,7 @@ df3dom %>%
   filter(species_code == "DLAB", clade == "A")
 # present in one historcal and two post-2023 (still recovering from bleaching?)
 df3 %>% filter(sample_name == "KL-250")
+# may not be real -- the dominant DIV is B. need DIV data.
 
 # PCLI with A --
 df3dom %>%
