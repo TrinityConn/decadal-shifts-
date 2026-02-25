@@ -25,59 +25,30 @@ library(ggh4x)
 library(stringi)
 ```
 
-```{r ggplot_theme}
-# Create custom ggplot theme
-theme_custom <- function() {
-  theme_bw(base_size = 10, base_family = "Arial") %+replace%
-    theme(
-      panel.grid.major = element_blank(), 
-      panel.grid.minor = element_blank(), 
-      panel.background = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.background = element_rect(fill = NA, colour = NA)
-    )
-}
-
-sppord <- factor(levels = c("Cnat", "Dlab", "Pstr", "Pfur",
-                            "Ssid", "Oann", "Ofav", "Ofra", "Mcav"))
-
-## ggplot labeller
-sppnames <- c(
-  Cnat = "C. natans",
-  Dlab = "D. labyrinthiformis",
-  Pstr = "P. strigosa",
-  Pfur = "P. furcata",
-  Ssid = "S. siderea",
-  Oann = "O. annularis",
-  Ofav = "O. faveolata",
-  Ofra = "O. franksi",
-  Mcav = "M. cavernosa"
-)
-
-sitenames <- c(
-  EastTektite = "ET",
-  WhitePoint = "WP",
-  CabritteHorn = "CH"
-)
-
-global_labeller <- labeller(
-  gspp = sppnames,
-  host_site = sitenames
-)
-```
 
 # Load coral sample metadata
 ```{r}
-# Load keys site metadata
-keysmd <- read_csv("keysdata/keys_symbiont_metadata.csv", col_types = "c") %>%
-  mutate(across(everything(), as.character)) %>%
-  clean_names()
-
-
 # Load full metadata
-md <- readxl::read_xls("metadata/decadalshifts_SST.xls")
+md <- readxl::read_xls("metadata/decadalshifts_SST.xls") %>%
+  mutate(year = str_sub(collection_date, 1, 4),
+         era = case_when(year < 2005 ~ "2001-03",
+                         year >= 2023 ~ "2024",
+                         TRUE ~ "2019-21"),
+         era = factor(era, levels = c("2001-03", "2019-21", "2024")))
 
 md
+
+md %>% filter(collection_region == "FL") %>%
+  mutate(across(c(collection_longitude, collection_latitude), as.numeric)) %>%
+  ggplot(aes(x = collection_longitude, y = collection_latitude)) +
+  geom_point(aes(color = collection_site))
+
+md %>% filter(collection_region == "FL") %>%
+  mutate(across(c(collection_longitude, collection_latitude), as.numeric)) %>%
+  distinct(collection_site, collection_latitude, collection_longitude) %>%
+  ggplot(aes(x = collection_longitude, y = collection_latitude)) +
+  geom_point() +
+  geom_text_repel(aes(label = collection_site), max.overlaps = Inf)
 ```
 
 # Load data from Pawar run
@@ -86,9 +57,10 @@ md
 sam0 <- read_tsv("data/20240723T194127_Pawar_Run /post_med_seqs/500_20240730T092802_DBV_20240730T195050.seqs.absolute.abund_and_meta.txt") %>%
   clean_names() %>%
   select(sample_uid, sample_name, fastq_fwd_file_name, fastq_rev_file_name, data_set_uid, data_set_name,
-         host_genus, host_species, collection_latitude, collection_longitude, collection_date, collection_depth) %>%
+         host_genus, host_species, collection_latitude, collection_longitude, collection_date, collection_depth, post_med_absolute) %>%
   slice(1:(n() - 1)) # Remove last row - not a sample
 sam1 <- as.matrix(sam0)
+#hie <- as_tibble(sam1) %>% left_join(md, by = "sample_name")
 rownames(sam1) <- sam0$sample_name
 sam <- sample_data(data.frame(sam1))
 rownames(sam)
@@ -146,10 +118,10 @@ variants_pawar <- phyloseq(otu, tax, sam)
 # Load data from Conn runs
 ## profiles
 ```{r load_its2_profiles_conn_run}
-sam0 <- read_tsv("data/20250702T202717_Conn_Run/post_med_seqs/606_20250710T083602_DBV_20250712T034645.seqs.absolute.abund_and_meta.txt") %>%
+sam0 <- read_tsv("data/20250717T180136_conntr1/post_med_seqs/610_20250905T171203_DBV_20250910T163211.seqs.absolute.abund_and_meta.txt") %>%
   clean_names() %>%
   select(sample_uid, sample_name, fastq_fwd_file_name, fastq_rev_file_name, data_set_uid, data_set_name,
-         host_genus, host_species, collection_latitude, collection_longitude, collection_date, collection_depth) %>%
+         host_genus, host_species, collection_latitude, collection_longitude, collection_date, collection_depth, post_med_absolute) %>%
   slice(1:(n() - 1)) # Remove last row - not a sample
 sam1 <- as.matrix(sam0)
 rownames(sam1) <- sam0$sample_name
@@ -157,7 +129,7 @@ sam <- sample_data(data.frame(sam1))
 rownames(sam)
 
 tax0 <- read_tsv(
-  file = "data/20250702T202717_Conn_Run/its2_type_profiles/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt",
+  file = "data/20250717T180136_conntr1/its2_type_profiles/610_20250905T171203_DBV_20250910T163211.profiles.absolute.abund_and_meta.txt",
   n_max = 6) %>%
   dplyr::select(-2) %>% 
   gather(UID, value, -1) %>% 
@@ -168,7 +140,7 @@ rownames(tax1) <- tax0$uid
 tax <- tax_table(tax1)
 
 otu0 <- read_tsv(
-  file = "data/20250702T202717_Conn_Run/its2_type_profiles/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt") %>% 
+  file = "data/20250717T180136_conntr1/its2_type_profiles/610_20250905T171203_DBV_20250910T163211.profiles.absolute.abund_and_meta.txt") %>% 
   rename(sample_name = "...2") %>%
   select(-1) %>%
   slice(7:(n() - 2)) %>%   # remove non-sample rows
@@ -184,7 +156,7 @@ taxa_names(profiles_conn) <- data.frame(tax_table(profiles_conn))$its2_type_prof
 ## variants
 ```{r load_its2_variants_conn_run}
 taxnames <- read_tsv(
-  file = "data/20250702T202717_Conn_Run/post_med_seqs/606_20250710T083602_DBV_20250712T034645.seqs.absolute.abund_and_meta.txt",
+  file = "data/20250717T180136_conntr1/post_med_seqs/610_20250905T171203_DBV_20250910T163211.seqs.absolute.abund_and_meta.txt",
   n_max = 0) %>%
   select(-(1:39)) %>%
   names(.)
@@ -197,7 +169,7 @@ rownames(tax1) <- tax0$DIV
 tax <- tax_table(tax1)
 
 otu0 <- read_tsv(
-  file = "data/20250702T202717_Conn_Run/post_med_seqs/606_20250710T083602_DBV_20250712T034645.seqs.absolute.abund_and_meta.txt") %>% 
+  file = "data/20250717T180136_conntr1/post_med_seqs/610_20250905T171203_DBV_20250910T163211.seqs.absolute.abund_and_meta.txt") %>% 
   select(-1, -(3:39))
 otu1 <- as.matrix(otu0[, -1])
 rownames(otu1) <- otu0$sample_name
@@ -208,14 +180,16 @@ variants_conn <- phyloseq(otu, tax, sam)
 
 # Filter to just Florida Keys samples, and merge data
 ```{r its2_filter}
-mastermd <- readxl::read_xlsx("metadata/Symbiont_DecadalShifts_Master.xlsx") %>%
-  clean_names()
+# mastermd <- readxl::read_xlsx("metadata/Symbiont_DecadalShifts_Master.xlsx") %>%
+#   clean_names()
+md %>% count(collection_region)
 
-fl <- mastermd %>%
-  filter(region == "Florida")
+# Get just Florida samples
+fl <- md %>%
+  filter(collection_region == "FL")
 
-profiles_conn_fl <- subset_samples(profiles_conn, sample_name %in% fl$tube_label)
-variants_conn_fl <- subset_samples(variants_conn, sample_name %in% fl$tube_label)
+profiles_conn_fl <- subset_samples(profiles_conn, sample_name %in% fl$sample_name)
+variants_conn_fl <- subset_samples(variants_conn, sample_name %in% fl$sample_name)
 
 profiles_merged <- merge_phyloseq(profiles_pawar, profiles_conn_fl)
 profiles_merged
@@ -225,21 +199,24 @@ ntaxa(profiles_merged)
 
 variants_merged <- merge_phyloseq(variants_pawar, variants_conn_fl)
 ntaxa(variants_pawar)
+sample_sums(variants_pawar)
 ntaxa(variants_conn)
+sample_sums(variants_conn)
 ntaxa(variants_merged)
 ```
+
 
 # Coral sampling summary
 ```{r sampling_summary_table1}
 # Create table of number of tagged colonies sampled at each site at each year
 table1 <- as_tibble(sample_data(profiles_merged)) %>%
-  left_join(keysmd, by = "sample_name") %>%
+  left_join(md, by = "sample_name") %>%
   drop_na(collection_site) %>%
   mutate(year = str_sub(collection_date.x, 1, 4),
          era = case_when(year < 2005 ~ "historical",
                          year >= 2023 ~ "post-2023",
                          TRUE ~ "contemporary")) %>%
-  group_by(era, host_species, collection_site) %>%
+  group_by(era, host_species.x, collection_site) %>%
   summarize(n = n()) %>%
   arrange(collection_site, era) %>%
   pivot_wider(names_from = c(collection_site, era), values_from = n) %>% 
@@ -252,29 +229,26 @@ table1
 # ITS2 sequence dataset summary and QC
 ```{r its2_qc}
 # Total number of post-MED sequences in dataset
-sum(sample_sums(variants))
+sum(sample_sums(variants_merged))
 # Total number of samples in dataset
-nsamples(variants)
+nsamples(variants_merged)
 
 # Filter out samples with low read counts
-low <- sample_sums(variants) < 1000
+low <- sample_sums(variants_merged) < 100
 table(low)  # Number of samples being filtered out due to low read counts
-variants <- subset_samples(variants, !low)
+variants <- subset_samples(variants_merged, !low)
 variants <- prune_taxa(taxa_sums(variants) != 0, variants)
-profiles <- subset_samples(profiles, !low)
+profiles <- subset_samples(profiles_merged, !low)
 profiles <- prune_taxa(taxa_sums(profiles) != 0, profiles)
 
 # Read count analysis
-hist(sample_sums(variants), breaks = 100)
-# One sample is an outlier with very high read count -- remove for summary stats of remaining samples
-outlier <- sample_sums(variants)[which(sample_sums(variants) == max(sample_sums(variants)))]
-woout <- sample_sums(variants)[which(sample_sums(variants) != max(sample_sums(variants)))]
+sums <- sample_sums(variants)
 
 # Histogram of remaining samples read counts
-hist(woout, breaks = 50)
+hist(sums, breaks = 50)
 
 # Mean number of sequences per sample and standard deviation
-mean(woout); sd(woout)
+mean(sums); sd(sums)
 
 # Count number of sequences and profiles by genus(/clade)
 # Sequences
@@ -300,9 +274,8 @@ vt <- transform_sample_counts(v, function(x) ifelse(x > 0.001, x, 0))
 vt <- prune_taxa(taxa_sums(vt) != 0, vt)
 
 ## Order colonies by sequence variant composition similarity within species for plotting
-mp <- merge_samples(vt, "host_id")
-hc <- hclust(dist(data.frame(otu_table(mp))))
-neword <- tibble(host_id = as.character(sample_data(mp)$host_id), ord = hc$order)
+hc <- hclust(dist(data.frame(otu_table(vt))))
+neword <- tibble(sample_name = as.character(sample_data(vt)$sample_name), ord = hc$order)
 
 ## Set colors for plotting sequence variants, with distinct palettes for each symbiont clade/genus
 tt <- as_tibble(data.frame(tax_table(vt))) %>%
@@ -312,8 +285,9 @@ acols <- colorRampPalette(brewer.pal(9, "Greys"))(nt$A)
 bcols <- colorRampPalette(brewer.pal(9, "Greens"))(nt$B)
 ccols <- colorRampPalette(brewer.pal(9, "Blues"))(nt$C)
 dcols <- colorRampPalette(brewer.pal(4, "Oranges"))(nt$D)
+gcols <- colorRampPalette(brewer.pal(4, "Reds"))(nt$G)
 set.seed(556)
-vpal <- c(acols[shuffle(acols)], bcols[shuffle(bcols)], ccols[shuffle(ccols)], dcols[shuffle(dcols)])
+vpal <- c(acols[shuffle(acols)], bcols[shuffle(bcols)], ccols[shuffle(ccols)], dcols[shuffle(dcols)], gcols[shuffle(gcols)])
 vpal <- setNames(vpal, tt$DIV)
 
 ## Set plotting order for sequence variants
@@ -321,24 +295,26 @@ divord <- as_tibble(data.frame(tax_table(vt))) %>%
   arrange(clade, DIV) %>%
   mutate(DIV = as_factor(DIV))
 
+md %>%
+  mutate(year = str_sub(collection_date, 1, 4)) %>%
+  count(year)
+
 vmdf <- psmelt(vt) %>%
   left_join(neword) %>%
-  arrange(host_genus, host_species, host_site, ord, year, clade, DIV) %>%
-  mutate(host_id = as_factor(host_id),
-         sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
-         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
-         gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
-                       levels = levels(sppord)),
-         DIV = factor(DIV, levels = divord$DIV))
+  arrange(host_genus, host_species, ord, clade, DIV) %>%
+  mutate(genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
+         gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3))),
+         DIV = factor(DIV, levels = divord$DIV)) %>%
+  mutate(year = str_sub(collection_date, 1, 4),
+         era = case_when(year < 2005 ~ "2001-03",
+                         year >= 2023 ~ "2024",
+                         TRUE ~ "2019-21"),
+         era = factor(era, levels = c("2001-03", "2019-21", "2024")))
 
 # Create barplot for sequence variants
-g1 <- ggplot(vmdf, aes(x = year, y = Abundance)) + 
+g1 <- ggplot(vmdf, aes(x = sample_uid, y = Abundance)) + 
   geom_col(width = 1, aes(fill = DIV)) + 
-  facet_nested(~ gspp + host_site + host_id, 
-               labeller = global_labeller,
-               space = "free_x",
-               nest_line = element_line(linetype = 1),
-               remove_labels = "x") +
+  facet_nested_wrap(~ host_species + era, nrow = 3, scales = "free_x") +
   scale_x_discrete(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
   ylab("ITS2 sequences") +
@@ -350,6 +326,7 @@ g1 <- ggplot(vmdf, aes(x = year, y = Abundance)) +
         axis.ticks = element_blank(),
         panel.spacing = unit(0.25, "mm"),
         strip.background = element_blank())
+g1
 
 # Repeat for profiles
 ### truncate its2_type_profile names
@@ -361,6 +338,7 @@ acols <- brewer.pal(np$A, "Greys")
 bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
 ccols <- colorRampPalette(brewer.pal(6, "PuBu"))(np$C)
 dcols <- brewer.pal(np$D, "Reds")
+gcols <- colorRampPalette(brewer.pal(4, "Reds"))(np$G)
 set.seed(556)
 ppal <- c(acols, bcols, ccols, dcols)
 ppal <- setNames(ppal, pp$its2_type_profile_trunc)
@@ -413,5 +391,172 @@ fig1a <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0
 
 # Display Figure 1a
 fig1a
+```
+
+## Clade aggregation
+```{r}
+## Clade-level relative abundance + dominant clade + join md cleanly
+
+# relative abundance at DIV level (taxa_are_rows doesn't matter here)
+v_rel <- transform_sample_counts(variants, function(x) x / sum(x))
+
+# 1) clade relabund per sample (sums DIVs within clade)
+clade_wide <- psmelt(v_rel) %>%
+  as_tibble() %>%
+  transmute(
+    sample_name,
+    clade = as.character(clade),
+    rel_abund = as.numeric(Abundance)
+  ) %>%
+  group_by(sample_name, clade) %>%
+  summarize(rel_abund = sum(rel_abund), .groups = "drop") %>%
+  pivot_wider(
+    names_from  = clade,
+    values_from = rel_abund,
+    values_fill = 0
+  ) %>%
+  # make sure expected clade columns exist
+  mutate(across(any_of(c("A","B","C","D","G")), ~replace_na(.x, 0))) %>%
+  mutate(
+    dominant_clade = {
+      clades <- intersect(c("A","B","C","D","G"), names(.))
+      m <- as.matrix(select(., all_of(clades)))
+      clades[max.col(m, ties.method = "first")]
+    }
+  )
+
+# 2) Join md, keep only one copy of metadata (no .x/.y)
+#    Put your requested metadata up front; add others as needed.
+out <- clade_wide %>%
+  left_join(
+    md %>%
+      select(
+        sample_name,
+        host_genus,
+        host_species,
+        collection_date, era,
+        collection_site,
+        collection_latitude,
+        collection_longitude,
+        collection_depth_ft
+      ),
+    by = "sample_name"
+  ) %>%
+  rename(
+    site      = collection_site,
+    latitude  = collection_latitude,
+    longitude = collection_longitude,
+    depth     = collection_depth_ft,
+    date      = collection_date
+  ) %>%
+  relocate(host_genus, host_species, date, site, latitude, longitude, depth, .after = sample_name) %>%
+  relocate(dominant_clade, .after = depth)
+
+out
+```
+
+```{r clade_nmds, fig.width=9, fig.height=6}
+library(vegan)
+library(tidyverse)
+
+# 1) Build community matrix (samples x clades)
+clades <- c("A","B","C","D","G")
+
+nmds_df <- out %>%
+  filter(!is.na(era), !is.na(host_species)) %>%
+  mutate(across(all_of(clades), ~replace_na(.x, 0))) %>%
+  # drop any rows that are all zeros (shouldn't happen, but safe)
+  filter(rowSums(across(all_of(clades))) > 0)
+
+comm <- nmds_df %>%
+  select(all_of(clades)) %>%
+  as.matrix()
+rownames(comm) <- nmds_df$sample_name
+
+# 2) NMDS (Bray-Curtis)
+set.seed(1)
+nmds <- metaMDS(comm, distance = "bray")
+
+# 3) Extract scores and combine with metadata
+scr <- scores(nmds, display = "sites") %>%
+  as.data.frame() %>%
+  rownames_to_column("sample_name")
+
+plot_df <- nmds_df %>%
+  select(sample_name, host_genus, host_species, era, site, latitude, longitude, depth, dominant_clade) %>%
+  left_join(scr, by = "sample_name")
+
+# 4) Plot
+ggplot(plot_df, aes(x = NMDS1, y = NMDS2, color = era)) +
+  geom_point(alpha = 0.5, size = 1) +
+  facet_wrap(~ host_species) +
+  #coord_equal() +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "italic"),
+    legend.position = "bottom"
+  ) +
+  labs(
+    title = paste0("Clade-level symbiont composition (NMDS; stress = ", round(nmds$stress, 3), ")"),
+    color = "Era"
+  )
+
+
+
+### Optional but useful next step (quick test per species)
+#If you want a fast *“did composition shift across eras?”* check within each species, add this right after (PERMANOVA within each facet):
+
+
+# PERMANOVA within host_species (Bray-Curtis)
+adonis_by_species <- nmds_df %>%
+  group_by(host_species) %>%
+  group_modify(~{
+    comm_sp <- .x %>% select(all_of(clades)) %>% as.matrix()
+    # need >=2 eras and enough samples
+    if (n_distinct(.x$era) < 2 || nrow(comm_sp) < 10) return(tibble())
+    fit <- adonis2(comm_sp ~ era, data = .x, method = "bray")
+    tibble(
+      R2 = fit$R2[1],
+      p  = fit$`Pr(>F)`[1],
+      n  = nrow(.x),
+      eras = n_distinct(.x$era)
+    )
+  }) %>%
+  ungroup() %>%
+  arrange(p)
+
+adonis_by_species
+
+nmds_df %>% count(host_species, era) %>% filter(host_species == "faveolata")
+```
+
+```{r}
+clade_species_era <- out %>%
+  group_by(host_species, era) %>%
+  summarize(
+    across(c(A, B, C, D, G), sum),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = c(A, B, C, D, G),
+    names_to = "clade",
+    values_to = "value"
+  )
+
+ggplot(clade_species_era, aes(x = era, y = value, fill = clade)) +
+  geom_col(position = "fill", width = 0.8) +
+  facet_wrap(~ host_species, ncol = 3) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw() +
+  theme(
+    strip.text = element_text(face = "italic"),
+    panel.grid = element_blank()
+  ) +
+  labs(y = "Clade composition", x = NULL, fill = "Clade")
+
+
+out$depth
+md$collection_depth_ft
 ```
 
