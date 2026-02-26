@@ -206,25 +206,6 @@ ntaxa(variants_merged)
 ```
 
 
-# Coral sampling summary
-```{r sampling_summary_table1}
-# Create table of number of tagged colonies sampled at each site at each year
-table1 <- as_tibble(sample_data(profiles_merged)) %>%
-  left_join(md, by = "sample_name") %>%
-  drop_na(collection_site) %>%
-  mutate(year = str_sub(collection_date.x, 1, 4),
-         era = case_when(year < 2005 ~ "historical",
-                         year >= 2023 ~ "post-2023",
-                         TRUE ~ "contemporary")) %>%
-  group_by(era, host_species.x, collection_site) %>%
-  summarize(n = n()) %>%
-  arrange(collection_site, era) %>%
-  pivot_wider(names_from = c(collection_site, era), values_from = n) %>% 
-  adorn_totals(where = "row")
-table1
-
-
-```
 
 # ITS2 sequence dataset summary and QC
 ```{r its2_qc}
@@ -328,69 +309,69 @@ g1 <- ggplot(vmdf, aes(x = sample_uid, y = Abundance)) +
         strip.background = element_blank())
 g1
 
-# Repeat for profiles
-### truncate its2_type_profile names
-pp <- as_tibble(data.frame(tax_table(p))) %>%
-  arrange(clade, its2_type_profile) %>%
-  mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"))
-np <- pp %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
-acols <- brewer.pal(np$A, "Greys")
-bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
-ccols <- colorRampPalette(brewer.pal(6, "PuBu"))(np$C)
-dcols <- brewer.pal(np$D, "Reds")
-gcols <- colorRampPalette(brewer.pal(4, "Reds"))(np$G)
-set.seed(556)
-ppal <- c(acols, bcols, ccols, dcols)
-ppal <- setNames(ppal, pp$its2_type_profile_trunc)
-
-proford <- as_tibble(data.frame(tax_table(p))) %>%
-  mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right")) %>%
-  arrange(clade, its2_type_profile_trunc) %>%
-  mutate(its2_type_profile = as_factor(its2_type_profile_trunc))
-  
-pmdf <- psmelt(p) %>%
-  left_join(neword) %>%
-  arrange(host_genus, host_species, host_site, ord, year, clade, its2_type_profile) %>%
-  mutate(host_id = as_factor(host_id),
-         its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"),
-         sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
-         genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
-         gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
-                       levels = levels(sppord))) %>%
-  filter(Abundance > 0.01)
-
-# Create barplot for profiles
-g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
-    geom_col(width = 1, aes(fill = its2_type_profile_trunc)) +
-    facet_nested(~ gspp + host_site + host_id) +
-    scale_x_discrete(expand = c(0, 0)) +
-    scale_y_continuous(expand = c(0, 0)) +
-    ylab("Profiles") +
-    scale_fill_manual(values = ppal[pmdf$its2_type_profile_trunc], limits = force, drop = TRUE) +
-    theme(legend.position = "bottom", legend.key.size = unit(3, "mm"), legend.title = element_blank(),
-          legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, 0, -10),
-          legend.key = element_rect(fill = NA),
-          plot.margin = margin(0, 5.5, 5.5, 5.5),
-          text = element_text(size = 6), legend.text = element_text(size = 4),
-          panel.background = element_blank(), strip.text.x = element_blank(),
-          axis.title.x = element_blank(), axis.text.y = element_blank(), 
-          axis.text.x = element_text(angle = 90, vjust = 0.5, size = 3),
-          axis.ticks.x = element_line(size = 0.25),
-          axis.ticks.y = element_blank(),
-          strip.background = element_blank(),
-          panel.spacing = unit(0.25, "mm")) +
-    guides(fill = guide_legend(ncol = 3))
-
-# Extract legend from profiles barplot to use in multipanel figure below
-g2leg <- get_legend(g2)
-g2leg <- ggplotify::as.ggplot(g2leg) + theme(plot.margin = unit(c(-30, 0, 0, -10), "mm"))
-g2 <- g2 + theme(legend.position = "none")
-
-# Combine variants and profiles barplots into single panel to be Figure 1a
-fig1a <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
-
-# Display Figure 1a
-fig1a
+# # Repeat for profiles
+# ### truncate its2_type_profile names
+# pp <- as_tibble(data.frame(tax_table(p))) %>%
+#   arrange(clade, its2_type_profile) %>%
+#   mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"))
+# np <- pp %>% count(clade) %>% pivot_wider(names_from = clade, values_from = n)
+# acols <- brewer.pal(np$A, "Greys")
+# bcols <- colorRampPalette(brewer.pal(9, "YlGn"))(np$B)
+# ccols <- colorRampPalette(brewer.pal(6, "PuBu"))(np$C)
+# dcols <- brewer.pal(np$D, "Reds")
+# gcols <- colorRampPalette(brewer.pal(4, "Reds"))(np$G)
+# set.seed(556)
+# ppal <- c(acols, bcols, ccols, dcols)
+# ppal <- setNames(ppal, pp$its2_type_profile_trunc)
+# 
+# proford <- as_tibble(data.frame(tax_table(p))) %>%
+#   mutate(its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right")) %>%
+#   arrange(clade, its2_type_profile_trunc) %>%
+#   mutate(its2_type_profile = as_factor(its2_type_profile_trunc))
+#   
+# pmdf <- psmelt(p) %>%
+#   left_join(neword) %>%
+#   arrange(host_genus, host_species, host_site, ord, year, clade, its2_type_profile) %>%
+#   mutate(host_id = as_factor(host_id),
+#          its2_type_profile_trunc = str_trunc(its2_type_profile, 22, "right"),
+#          sample_id = as_factor(paste(host_genus, host_species, host_id, year, sep = "_")),
+#          genus_species = as_factor(paste(str_sub(host_genus, 1, 1), ". ", host_species, sep = "")),
+#          gspp = factor(paste0(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3)),
+#                        levels = levels(sppord))) %>%
+#   filter(Abundance > 0.01)
+# 
+# # Create barplot for profiles
+# g2 <- ggplot(pmdf, aes(x = year, y = Abundance)) +
+#     geom_col(width = 1, aes(fill = its2_type_profile_trunc)) +
+#     facet_nested(~ gspp + host_site + host_id) +
+#     scale_x_discrete(expand = c(0, 0)) +
+#     scale_y_continuous(expand = c(0, 0)) +
+#     ylab("Profiles") +
+#     scale_fill_manual(values = ppal[pmdf$its2_type_profile_trunc], limits = force, drop = TRUE) +
+#     theme(legend.position = "bottom", legend.key.size = unit(3, "mm"), legend.title = element_blank(),
+#           legend.margin = margin(1, 0, 0, 0), legend.box.margin = margin(-10, -10, 0, -10),
+#           legend.key = element_rect(fill = NA),
+#           plot.margin = margin(0, 5.5, 5.5, 5.5),
+#           text = element_text(size = 6), legend.text = element_text(size = 4),
+#           panel.background = element_blank(), strip.text.x = element_blank(),
+#           axis.title.x = element_blank(), axis.text.y = element_blank(), 
+#           axis.text.x = element_text(angle = 90, vjust = 0.5, size = 3),
+#           axis.ticks.x = element_line(size = 0.25),
+#           axis.ticks.y = element_blank(),
+#           strip.background = element_blank(),
+#           panel.spacing = unit(0.25, "mm")) +
+#     guides(fill = guide_legend(ncol = 3))
+# 
+# # Extract legend from profiles barplot to use in multipanel figure below
+# g2leg <- get_legend(g2)
+# g2leg <- ggplotify::as.ggplot(g2leg) + theme(plot.margin = unit(c(-30, 0, 0, -10), "mm"))
+# g2 <- g2 + theme(legend.position = "none")
+# 
+# # Combine variants and profiles barplots into single panel to be Figure 1a
+# fig1a <- plot_grid(g1, g2, nrow = 2, label_fontface = "plain", rel_heights = c(0.6, 0.4))
+# 
+# # Display Figure 1a
+# fig1a
 ```
 
 ## Clade aggregation
@@ -435,6 +416,7 @@ out <- clade_wide %>%
         host_genus,
         host_species,
         collection_date, era,
+        collection_subregion,
         collection_site,
         collection_latitude,
         collection_longitude,
@@ -443,92 +425,93 @@ out <- clade_wide %>%
     by = "sample_name"
   ) %>%
   rename(
+    subregion = collection_subregion,
     site      = collection_site,
     latitude  = collection_latitude,
     longitude = collection_longitude,
     depth     = collection_depth_ft,
     date      = collection_date
   ) %>%
-  relocate(host_genus, host_species, date, site, latitude, longitude, depth, .after = sample_name) %>%
+  relocate(host_genus, host_species, date, subregion, site, latitude, longitude, depth, .after = sample_name) %>%
   relocate(dominant_clade, .after = depth)
 
 out
 ```
 
 ```{r clade_nmds, fig.width=9, fig.height=6}
-library(vegan)
-library(tidyverse)
-
-# 1) Build community matrix (samples x clades)
-clades <- c("A","B","C","D","G")
-
-nmds_df <- out %>%
-  filter(!is.na(era), !is.na(host_species)) %>%
-  mutate(across(all_of(clades), ~replace_na(.x, 0))) %>%
-  # drop any rows that are all zeros (shouldn't happen, but safe)
-  filter(rowSums(across(all_of(clades))) > 0)
-
-comm <- nmds_df %>%
-  select(all_of(clades)) %>%
-  as.matrix()
-rownames(comm) <- nmds_df$sample_name
-
-# 2) NMDS (Bray-Curtis)
-set.seed(1)
-nmds <- metaMDS(comm, distance = "bray")
-
-# 3) Extract scores and combine with metadata
-scr <- scores(nmds, display = "sites") %>%
-  as.data.frame() %>%
-  rownames_to_column("sample_name")
-
-plot_df <- nmds_df %>%
-  select(sample_name, host_genus, host_species, era, site, latitude, longitude, depth, dominant_clade) %>%
-  left_join(scr, by = "sample_name")
-
-# 4) Plot
-ggplot(plot_df, aes(x = NMDS1, y = NMDS2, color = era)) +
-  geom_point(alpha = 0.5, size = 1) +
-  facet_wrap(~ host_species) +
-  #coord_equal() +
-  theme_bw() +
-  theme(
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "italic"),
-    legend.position = "bottom"
-  ) +
-  labs(
-    title = paste0("Clade-level symbiont composition (NMDS; stress = ", round(nmds$stress, 3), ")"),
-    color = "Era"
-  )
-
-
-
-### Optional but useful next step (quick test per species)
-#If you want a fast *“did composition shift across eras?”* check within each species, add this right after (PERMANOVA within each facet):
-
-
-# PERMANOVA within host_species (Bray-Curtis)
-adonis_by_species <- nmds_df %>%
-  group_by(host_species) %>%
-  group_modify(~{
-    comm_sp <- .x %>% select(all_of(clades)) %>% as.matrix()
-    # need >=2 eras and enough samples
-    if (n_distinct(.x$era) < 2 || nrow(comm_sp) < 10) return(tibble())
-    fit <- adonis2(comm_sp ~ era, data = .x, method = "bray")
-    tibble(
-      R2 = fit$R2[1],
-      p  = fit$`Pr(>F)`[1],
-      n  = nrow(.x),
-      eras = n_distinct(.x$era)
-    )
-  }) %>%
-  ungroup() %>%
-  arrange(p)
-
-adonis_by_species
-
-nmds_df %>% count(host_species, era) %>% filter(host_species == "faveolata")
+# library(vegan)
+# library(tidyverse)
+# 
+# # 1) Build community matrix (samples x clades)
+# clades <- c("A","B","C","D","G")
+# 
+# nmds_df <- out %>%
+#   filter(!is.na(era), !is.na(host_species)) %>%
+#   mutate(across(all_of(clades), ~replace_na(.x, 0))) %>%
+#   # drop any rows that are all zeros (shouldn't happen, but safe)
+#   filter(rowSums(across(all_of(clades))) > 0)
+# 
+# comm <- nmds_df %>%
+#   select(all_of(clades)) %>%
+#   as.matrix()
+# rownames(comm) <- nmds_df$sample_name
+# 
+# # 2) NMDS (Bray-Curtis)
+# set.seed(1)
+# nmds <- metaMDS(comm, distance = "bray")
+# 
+# # 3) Extract scores and combine with metadata
+# scr <- scores(nmds, display = "sites") %>%
+#   as.data.frame() %>%
+#   rownames_to_column("sample_name")
+# 
+# plot_df <- nmds_df %>%
+#   select(sample_name, host_genus, host_species, era, site, latitude, longitude, depth, dominant_clade) %>%
+#   left_join(scr, by = "sample_name")
+# 
+# # 4) Plot
+# ggplot(plot_df, aes(x = NMDS1, y = NMDS2, color = era)) +
+#   geom_point(alpha = 0.5, size = 1) +
+#   facet_wrap(~ host_species) +
+#   #coord_equal() +
+#   theme_bw() +
+#   theme(
+#     panel.grid = element_blank(),
+#     strip.text = element_text(face = "italic"),
+#     legend.position = "bottom"
+#   ) +
+#   labs(
+#     title = paste0("Clade-level symbiont composition (NMDS; stress = ", round(nmds$stress, 3), ")"),
+#     color = "Era"
+#   )
+# 
+# 
+# 
+# ### Optional but useful next step (quick test per species)
+# #If you want a fast *“did composition shift across eras?”* check within each species, add this right after (PERMANOVA within each facet):
+# 
+# 
+# # PERMANOVA within host_species (Bray-Curtis)
+# adonis_by_species <- nmds_df %>%
+#   group_by(host_species) %>%
+#   group_modify(~{
+#     comm_sp <- .x %>% select(all_of(clades)) %>% as.matrix()
+#     # need >=2 eras and enough samples
+#     if (n_distinct(.x$era) < 2 || nrow(comm_sp) < 10) return(tibble())
+#     fit <- adonis2(comm_sp ~ era, data = .x, method = "bray")
+#     tibble(
+#       R2 = fit$R2[1],
+#       p  = fit$`Pr(>F)`[1],
+#       n  = nrow(.x),
+#       eras = n_distinct(.x$era)
+#     )
+#   }) %>%
+#   ungroup() %>%
+#   arrange(p)
+# 
+# adonis_by_species
+# 
+# nmds_df %>% count(host_species, era) %>% filter(host_species == "faveolata")
 ```
 
 ```{r}
@@ -558,5 +541,321 @@ ggplot(clade_species_era, aes(x = era, y = value, fill = clade)) +
 
 out$depth
 md$collection_depth_ft
+
+out
+write_csv(out, file = "out.csv")
+```
+
+```{r}
+# AGG SPECIES FIRST
+
+# Set this to the species column in out.csv (examples: "Species", "host_species", "species", etc.)
+SPECIES_COL <- "host_species"
+
+# ---------- 1) Hardcoded mapping: code -> full species name ----------
+species_names <- c(
+  AAGA = "Agaricia agaricites",
+  AFRA = "Agaricia fragilis",
+  AGAR = "Agaricia sp.",
+  AGRA = "Agaricia grahamae",
+  AHUM = "Agaricia humilis",
+  ALAM = "Agaricia lamarcki",
+  ACER = "Acropora cervicornis",
+  APAL = "Acropora palmata",
+  APRO = "Acropora prolifera",
+  CNAT = "Colpophyllia natans",
+  DCYL = "Dendrogyra cylindrus",
+  DLAB = "Diploria labyrinthiformis",
+  DSTO = "Dichocoenia stokesii",
+  EFAS = "Eusmilia fastigiata",
+  FFRA = "Favia fragum",
+  HCUC = "Helioseris cucullata",
+  ISIN = "Isophyllia sinuosa",
+  IRIG = "Isophyllia rigida",
+  ISOP = "Isophyllia sp.",
+  MADR = "Madracis sp.",
+  MANG = "Mussa angulosa",
+  MARE = "Manicina areolata",
+  MAUR = "Madriacis auretenra",
+  MCAV = "Montastraea cavernosa",
+  MDEC = "Madracis decactis",
+  MFER = "Mycetophyllia ferox",
+  MALI = "Mycetophyllia aliciae",
+  MLAM = "Mycetophyllia lamarckiana",
+  MFOR = "Madracis formosa",
+  MJAC = "Meandrina jacksoni",
+  MMEA = "Meandrina meandrites",
+  MSEN = "Madracis senaria",
+  MYCE = "Mycetophyllia sp.",
+  OANN = "Orbicella annularis",
+  OCUL = "Oculina sp.",
+  ODIF = "Oculina diffusa",
+  OFAV = "Orbicella faveolata",
+  OFRA = "Orbicella franksi",
+  ORBI = "Orbicella sp.",
+  PAST = "Porites astreoides",
+  PBRA = "Porites branneri",
+  PBRC = "Porites (branching)",
+  PCLI = "Pseudodiploria clivosa",
+  PDIV = "Porites divaricata",
+  PFUR = "Porites furcata",
+  PORI = "Porites sp.",
+  PPOR = "Porites porites",
+  PSTR = "Pseudodiploria strigosa",
+  SBOU = "Solenastrea bournoni",
+  SCOL = "Scolymia sp.",
+  SHYA = "Solenastrea hyades",
+  SIDE = "Siderastrea sp.",
+  SINT = "Stephanocoenia intersepta",
+  SOLE = "Solenastrea sp.",
+  SRAD = "Siderastrea radians",
+  SSID = "Siderastrea siderea",
+  UNKN = "Unknown"
+)
+
+lookup <- tibble(code = names(species_names),
+                 species_name = unname(species_names)) %>%
+  distinct(species_name, .keep_all = TRUE) %>%
+  mutate(
+    species_name_lc = str_to_lower(species_name),
+    epithet_lc      = str_to_lower(word(species_name, -1))
+  )
+
+code_from_species <- function(x) {
+  x <- as.character(x)
+  x_lc <- str_to_lower(x)
+
+  # already 4-letter codes
+  out <- ifelse(str_detect(x, "^[A-Z]{4}$"), x, NA_character_)
+
+  # full-name match
+  out <- coalesce(out, lookup$code[match(x_lc, lookup$species_name_lc)])
+
+  # epithet-only match (e.g., "astreoides")
+  out <- coalesce(out, lookup$code[match(x_lc, lookup$epithet_lc)])
+
+  # fallback
+  out <- coalesce(out, "UNKN")
+  out
+}
+
+aggregate_species_code <- function(code) {
+  case_when(
+    code %in% c("AFRA", "AGAR", "AGRA", "AHUM", "ALAM") ~ "AGAR",
+    code %in% c("MALI", "MLAM", "MYCE", "MFER") ~ "MYCE",
+    code %in% c("IRIG", "ISIN", "ISOP") ~ "ISOP",
+    code %in% c("OCUL", "ODIF") ~ "OCUL",
+    code %in% c("SHYA", "SBOU") ~ "SOLE",
+    code %in% c("SCOL", "SCUB", "SLAC", "SWEL") ~ "SCOL",
+    code %in% c("OFAV", "OFRA", "OANN") ~ "ORBI",
+    TRUE ~ code
+  )
+}
+
+# ---------- 2) Read, convert, aggregate ----------
+out <- out
+
+out2 %>%
+  filter(host_species == "stokesii") %>%
+  count(era)
+
+stopifnot(SPECIES_COL %in% names(out))
+
+out2 <- out %>%
+  mutate(
+    Species_raw = .data[[SPECIES_COL]],
+    Species     = aggregate_species_code(code_from_species(Species_raw))
+  )
+
+out2 %>%
+  count(Species, era) %>%
+  filter(Species == "DSTO")
+
+# ---------- 3) Quick sanity checks ----------
+cat("\nTop Species after aggregation:\n")
+print(out2 %>% count(Species, sort = TRUE) %>% head(20))
+
+cat("\nUnmatched raw labels (mapped to UNKN):\n")
+print(out2 %>% filter(code_from_species(Species_raw) == "UNKN") %>%
+        distinct(Species_raw) %>% arrange(Species_raw))
+
+
+
+# ---------- Helpers: distances ----------
+tv_dist <- function(p, q) {
+  0.5 * sum(abs(p - q))
+}
+
+hellinger_dist <- function(p, q) {
+  sqrt(0.5 * sum((sqrt(p) - sqrt(q))^2))
+}
+
+jsd_dist <- function(p, q) {
+  # Jensen–Shannon distance with log base 2, bounded [0,1]
+  p <- as.numeric(p); q <- as.numeric(q)
+  m <- 0.5 * (p + q)
+
+  kl <- function(a, b) {
+    keep <- a > 0
+    sum(a[keep] * (log2(a[keep]) - log2(b[keep])))
+  }
+
+  sqrt(0.5 * kl(p, m) + 0.5 * kl(q, m))
+}
+
+# ---------- Read + prep ----------
+dat <- out2 %>%
+  filter(subregion == "Upper Keys") %>%
+  mutate(
+    era = factor(era, levels = c("2001-03", "2019-21", "2024"), ordered = TRUE),
+    depth = as.numeric(depth)
+  )
+
+out2 %>%
+  count(Species, era) %>%
+  filter(Species == "DSTO")
+
+
+clades <- c("A","B","C","D","G")
+
+# ensure clade cols exist and normalize to sum=1 per row
+dat <- dat %>%
+  mutate(across(all_of(clades), ~replace_na(.x, 0))) %>%
+  rowwise() %>%
+  mutate(
+    clade_sum = sum(c_across(all_of(clades))),
+    across(all_of(clades), ~ ifelse(clade_sum > 0, .x / clade_sum, .x))
+  ) %>%
+  ungroup() %>%
+  select(-clade_sum)
+
+
+
+# ---------- weighted mean composition ----------
+mean_comp <- function(df, w = NULL, clades) {
+  X <- df %>%
+    dplyr::select(dplyr::all_of(clades)) %>%
+    as.matrix()
+
+  storage.mode(X) <- "double"
+
+  if (is.null(w)) w <- rep(1, nrow(df))
+  if (sum(w) == 0) w <- rep(1, nrow(df))
+  w <- w / sum(w)
+
+  p <- colSums(X * w)
+  p / sum(p)
+}
+
+# ---------- compute pairwise metrics ----------
+compute_pair <- function(dat, era1, era2, min_n = 5, depth_std = TRUE, n_bins = 5) {
+
+  dd <- dat %>% filter(era %in% c(era1, era2))
+
+  if (depth_std) {
+    dd <- dd %>% filter(!is.na(depth))
+    # quantile bins based on pooled depths across both eras (within footprint)
+    qs <- seq(0, 1, length.out = n_bins + 1)
+    edges <- quantile(dd$depth, probs = qs, na.rm = TRUE)
+    edges <- unique(as.numeric(edges))
+    if (length(edges) <= 2) depth_std <- FALSE
+    if (depth_std) {
+      dd <- dd %>% mutate(depth_bin = cut(depth, breaks = edges, include.lowest = TRUE))
+    }
+  }
+
+  dd %>%
+    group_by(Species) %>%
+    group_modify(~{
+      g <- .x
+      g1 <- g %>% filter(era == era1)
+      g2 <- g %>% filter(era == era2)
+
+      if (nrow(g1) < min_n || nrow(g2) < min_n) return(tibble())
+
+            if (isTRUE(depth_std)) {
+
+        target <- g %>% count(depth_bin) %>% mutate(p = n / sum(n))
+        idx <- target$depth_bin
+
+        weights_for <- function(subg) {
+          src <- subg %>% count(depth_bin) %>% mutate(p = n / sum(n))
+          src <- tibble(depth_bin = idx) %>%
+            left_join(src, by = "depth_bin") %>%
+            mutate(p = replace_na(p, 0))
+
+          w_by_bin <- target$p / ifelse(src$p == 0, NA_real_, src$p)
+          w_by_bin[is.na(w_by_bin) | is.infinite(w_by_bin)] <- 0
+
+          subg %>% mutate(w = w_by_bin[match(depth_bin, idx)]) %>% pull(w)
+        }
+
+        w1 <- weights_for(g1)
+        w2 <- weights_for(g2)
+        p1 <- mean_comp(g1, w1, clades = clades)
+        p2 <- mean_comp(g2, w2, clades = clades)
+
+      } else {
+
+        p1 <- mean_comp(g1, clades = clades)
+        p2 <- mean_comp(g2, clades = clades)
+
+      }
+
+      tibble(
+        Species = unique(g$Species),
+        era1 = as.character(era1),
+        era2 = as.character(era2),
+        n1 = nrow(g1),
+        n2 = nrow(g2),
+        depth_std = depth_std,
+        TV = tv_dist(p1, p2),
+        Hellinger = hellinger_dist(p1, p2),
+        JSD = jsd_dist(p1, p2)
+      )
+    }) %>%
+    ungroup()
+}
+
+pairs <- list(
+  c("2001-03","2019-21"),
+  c("2019-21","2024"),
+  c("2001-03","2024")
+)
+
+datf <- dat %>%
+  count(Species, era) %>%
+  filter(n > 5) %>%
+  left_join(dat)
+
+datf %>%
+  count(Species, era) %>%
+  filter(Species == "DSTO")
+
+# Primary: depth standardized (Approach A)
+res_A <- map_dfr(pairs, ~compute_pair(datf, .x[1], .x[2], depth_std = TRUE)) %>%
+  mutate(analysis = "A_depth_std")
+
+# Sensitivity: no depth standardization
+res_no <- map_dfr(pairs, ~compute_pair(datf, .x[1], .x[2], depth_std = FALSE)) %>%
+  mutate(analysis = "no_depth_std")
+
+res_all <- bind_rows(res_A, res_no)
+
+# Wide output (one row per species per analysis)
+wide <- res_all %>%
+  pivot_wider(
+    id_cols = c(analysis, Species),
+    names_from = c(era1, era2),
+    values_from = c(TV, Hellinger, JSD, n1, n2),
+    names_sep = "_"
+  ) %>%
+  arrange(analysis, Species)
+
+wide
+
+write_csv(wide, file = "shuff_metrics.csv")
+
+
 ```
 
