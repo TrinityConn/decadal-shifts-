@@ -748,7 +748,7 @@ mean_comp <- function(df, w = NULL, clades) {
 }
 
 # ---------- compute pairwise metrics ----------
-compute_pair <- function(dat, era1, era2, min_n = 5, depth_std = TRUE, n_bins = 5) {
+compute_pair <- function(dat, era1, era2, min_n = 4, depth_std = TRUE, n_bins = 6) {
 
   dd <- dat %>% filter(era %in% c(era1, era2))
 
@@ -823,21 +823,13 @@ pairs <- list(
   c("2001-03","2024")
 )
 
-datf <- dat %>%
-  count(Species, era) %>%
-  filter(n > 5) %>%
-  left_join(dat)
-
-datf %>%
-  count(Species, era) %>%
-  filter(Species == "DSTO")
 
 # Primary: depth standardized (Approach A)
-res_A <- map_dfr(pairs, ~compute_pair(datf, .x[1], .x[2], depth_std = TRUE)) %>%
+res_A <- map_dfr(pairs, ~compute_pair(dat, .x[1], .x[2], depth_std = TRUE)) %>%
   mutate(analysis = "A_depth_std")
 
 # Sensitivity: no depth standardization
-res_no <- map_dfr(pairs, ~compute_pair(datf, .x[1], .x[2], depth_std = FALSE)) %>%
+res_no <- map_dfr(pairs, ~compute_pair(dat, .x[1], .x[2], depth_std = FALSE)) %>%
   mutate(analysis = "no_depth_std")
 
 res_all <- bind_rows(res_A, res_no)
