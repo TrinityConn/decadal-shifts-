@@ -1,0 +1,318 @@
+---
+title: "KeyLargo_ITS2"
+author: "Trinity Conn"
+date: "2025-07-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r load_libraries}
+library(janitor)
+library(phyloseq)  # BiocManager::install("phyloseq")
+library(cowplot)
+library(ggrepel)
+library(scales)
+library(RColorBrewer)
+library(MASS)
+library(lme4)
+library(emmeans)
+library(tidyverse)
+library(vegan)
+library(ggh4x)
+library(stringi)
+```
+
+# Load Data
+```{r load_its2_profiles}
+
+##load in combined Anooj run and Trinity run metadata
+sam0 <- read.csv("keysdata/keys_symbiont_metadata.csv", row.names=1)%>%
+  clean_names()
+
+sam1 <- as.matrix(sam0)
+rownames(sam1) <- sam0$sample_name
+sam <- sample_data(data.frame(sam1))
+
+#load in profiles from Anooj run (historical and 2020/2021 contemporary)
+tax0 <- read_tsv(
+  file = "keysdata/500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt",
+  n_max = 6) %>%
+  dplyr::select(-2) %>% 
+  gather(UID, value, -1) %>% 
+  spread(1, value) %>%
+  clean_names()
+tax1 <- as.matrix(tax0[, -1], dimnames = list(tax0$uid, colnames(tax0[-1])))
+rownames(tax1) <- tax0$uid
+tax <- tax_table(tax1)
+
+#load in profiles from Trinity run (2024 contemporary)
+tax10 <- read_tsv(
+  file = "keysdata/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt",
+  n_max = 6) %>%
+  dplyr::select(-2) %>% 
+  gather(UID, value, -1) %>% 
+  spread(1, value) %>%
+  clean_names()
+tax11 <- as.matrix(tax10[, -1], dimnames = list(tax10$uid, colnames(tax10[-1])))
+rownames(tax11) <- tax10$uid
+taxx <- tax_table(tax11)
+
+
+#load in profiles for OTU analysis from Anooj run (historical and 2020/2021 contemporary )
+otu0 <- read_tsv(
+  file = "keysdata/500_20240730T092802_DBV_20240730T195050.profiles.absolute.abund_and_meta.txt") %>% 
+  rename(sample_name = "...2") %>%
+  dplyr::select(-1) %>%
+  slice(7:n()) %>%
+  mutate_at(2:ncol(.), as.numeric)
+otu1 <- as.matrix(otu0[, -1])
+rownames(otu1) <- otu0$sample_name
+otu <- otu_table(otu1, taxa_are_rows = FALSE)
+
+#load in profiles for OTU analysis from Trinity run (2024 contemporary)
+otu10 <- read_tsv(
+  file = "keysdata/606_20250710T083602_DBV_20250712T034645.profiles.absolute.abund_and_meta.txt") %>% 
+  rename(sample_name = "...2") %>%
+  dplyr::select(-1) %>%
+  slice(7:n()) %>%
+  mutate_at(2:ncol(.), as.numeric)
+otu11 <- as.matrix(otu10[, -1])
+rownames(otu11) <- otu10$sample_name
+otuu <- otu_table(otu11, taxa_are_rows = FALSE)
+
+
+profiles1 <- phyloseq(otuu, taxx, sam)
+
+profiles2 <-phyloseq(otu, tax, sam)
+
+#melt Anooj data  into dataframe 
+df<-psmelt(profiles2)
+
+#melt Trinity data into dataframe 
+df1<-psmelt(profiles1)
+
+#combine into one dataframe 
+df2<-rbind(df, df1)
+
+#filter out low abundance (zero from errors in adding the primers) and samples with G as the major clade 
+df2<-df2%>%
+  filter(Abundance!="0")%>%
+  filter(clade!="G")
+
+#separate out year and plot total major clades by era 
+df2<-df2%>% mutate(year = substr(collection_date, 1, 4))
+
+eras<-data.frame(year=c("2001", "2002", "2003", "2020", "2021", "2024"), 
+                    era=c("historical", "historical", "historical", "contemporary_pre2023", "contemporary_pre2023", "contemporary_post2023"))
+
+df3<-left_join(eras, df2, by=c("year"))
+
+df3$era<-factor(df3$era, levels=c("historical", "contemporary_pre2023", "contemporary_post2023"))
+ggplot(df3, aes(x=era, fill=clade))+geom_bar(alpha=1)+facet_wrap(~species_code)
+
+
+```
+
+# Get just dominant symbiont (>50% relative abundance within each sample)
+```{r}
+df3dom <- df3 %>%
+  group_by(sample_name) %>%
+  filter(Abundance == max(Abundance))
+
+df3dom %>%
+  group_by(species_code) %>%
+  summarise(doms = paste(unique(clade), collapse = ", ")) %>%
+  arrange(species_code) %>%
+  print(n = nrow(.))
+
+# Check out new records
+# DLAB with A -- KL-250, R414, R339
+df3dom %>%
+  filter(species_code == "DLAB", clade == "A")
+# present in one historcal and two post-2023 (still recovering from bleaching?)
+df3 %>% filter(sample_name == "KL-250")
+# may not be real -- the dominant DIV is B. need DIV data.
+
+# PCLI with A --
+df3dom %>%
+  filter(species_code == "PCLI", clade == "A")
+# present in one post-2023 (still recovering from bleaching?)
+
+# PSTR with A --
+df3dom %>%
+  filter(species_code == "PSTR", clade == "A")
+# present in two post-2023 (still recovering from bleaching?)
+```
+
+
+
+
+
+
+```{r proportions, fig.width=15,fig.height=10}
+
+#now we want to calculate the proportions of each sample size that is D so we can plot change in proportion over eras/years 
+
+
+prop<-df3%>%
+  group_by(species_code, era)%>%
+ mutate(
+    total = n())+
+  summarize(
+    total_A = sum(clade == "A", na.rm = TRUE),
+    total_B = sum(clade=="B", na.rm=TRUE),
+    total_C = sum(clade=="C", na.rm=TRUE),
+    total_D = sum(clade=="D", na.rm=TRUE)
+  )
+
+prop <- df3 %>%
+  group_by(species_code, era) %>%
+  summarise(
+    total = n(),
+    total_A = sum(clade == "A", na.rm = TRUE),
+    total_B = sum(clade == "B", na.rm = TRUE),
+    total_C = sum(clade == "C", na.rm = TRUE),
+    total_D = sum(clade == "D", na.rm = TRUE),
+    prop_A = total_A / total,
+    prop_B = total_B / total,
+    prop_C = total_C / total,
+    prop_D = total_D / total,
+    .groups = "drop"
+  )
+
+
+prop_long <- prop %>%
+  pivot_longer(
+    cols = starts_with("prop_"),
+    names_to = "clade",
+    names_prefix = "prop_",
+    values_to = "prop"
+  )
+
+#remove all species that don't have replicates across all eras
+#prop_long<- prop_long %>%
+ # group_by(species_code) %>%
+  #filter(n_distinct(era) == 3) %>%
+  #ungroup()
+
+#prop_long<-prop_long%>%
+#  filter(total>=10)
+
+#remove species code UNK
+prop_long<-prop_long%>%filter(species_code!="UNK")
+
+
+#write csv 
+write.csv(prop_long, file="replicates_keys_proportion.csv")
+
+prop_long_filtered <- prop_long %>%
+  group_by(species_code, era) %>%
+  slice(1) %>%  # ensure one row per species_code-era for total
+  group_by(species_code) %>%
+  filter(n_distinct(era) == 3, all(total >= 5)) %>%
+  ungroup() %>%
+  semi_join(prop_long, ., by = c("species_code", "era")) %>%
+  mutate(clade = factor(clade, levels = c("C", "B", "A", "D")))
+
+
+#plot 
+prop_long_filtered2 <- prop_long_filtered %>% filter(species_code %in% c("CNAT", "DLAB", "OFAV", "PSTR"))
+ggplot(prop_long_filtered2, aes(x=era, y=prop, fill=clade))+geom_col(alpha=0.8)+facet_nested(~ species_code)+ylab("Proportion of Colonies")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+xlab("") +
+  scale_fill_manual(values = c(
+  "#2A9D8F",  # cool: teal green
+  "#457B9D",   # cool: desaturated blue
+  "#F4A261",  # warm: muted orange
+  "#E63946")) + # warm: soft crimson
+  scale_x_discrete(labels = c("2003", "2023", "2024"))
+
+
+
+
+
+
+```
+
+```{r symbiont broken up by year}
+propy <- df3 %>%
+  group_by(species_code, year) %>%
+  summarise(
+    total = n(),
+    total_A = sum(clade == "A", na.rm = TRUE),
+    total_B = sum(clade == "B", na.rm = TRUE),
+    total_C = sum(clade == "C", na.rm = TRUE),
+    total_D = sum(clade == "D", na.rm = TRUE),
+    prop_A = total_A / total,
+    prop_B = total_B / total,
+    prop_C = total_C / total,
+    prop_D = total_D / total,
+    .groups = "drop"
+  )
+
+
+prop_longy <- propy %>%
+  pivot_longer(
+    cols = starts_with("prop_"),
+    names_to = "clade",
+    names_prefix = "prop_",
+    values_to = "prop"
+  )
+
+prop_longy<- prop_longy %>%
+  group_by(species_code) %>%
+  filter(n_distinct(year) == 2) %>%
+  ungroup()
+
+prop_longy<-prop_longy%>%
+  filter(total>=10)
+
+#remove species with no replicates across eras 
+
+ggplot(prop_longy, aes(x=year, y=prop, fill=clade))+geom_col(alpha=0.8)+facet_nested(~ species_code)+ylab("Proportion of Colonies")+
+  theme(axis.text.x = element_text(angle = 50, vjust = 0.5, hjust=1))
+
+
+```
+
+
+
+```{r}
+df3 %>%
+  filter(!species_code == "UNK") %>%
+  filter(!era == "contemporary_post2023") %>%
+  distinct(era, collection_site, species_code) %>%
+  arrange(collection_site, species_code, era)
+
+df3f <- df3 %>%
+  filter(species_code != "UNK",
+         era != "contemporary_post2023") %>%
+  group_by(collection_site, species_code, era) %>%
+  tally(name = "n_obs") %>%
+  ungroup() %>%
+  # keep only species with ≥3 in each era at that site
+  group_by(collection_site, species_code) %>%
+  filter(all(c("historical", "contemporary_pre2023") %in% era),
+         min(n_obs) >= 3) %>%
+  ungroup() %>%
+  # join back to keep full records from df3
+  inner_join(df3, by = c("collection_site", "species_code", "era"))
+
+df3f_summary <- df3f %>%
+  group_by(collection_site, species_code, era, clade) %>%
+  summarise(n = n(), .groups = "drop")
+
+ggplot(df3f_summary, aes(x = era, y = n, fill = clade)) +
+  geom_col(position = "stack") +
+  facet_grid(species_code ~ collection_site, scales = "free_y") +
+  labs(x = "Era", y = "Count of clade") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
