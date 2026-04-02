@@ -639,37 +639,30 @@ code_from_species <- function(x) {
   out
 }
 
-aggregate_species_code <- function(code) {
-  case_when(
-    code %in% c("AFRA", "AGAR", "AGRA", "AHUM", "ALAM") ~ "AGAR",
-    code %in% c("MALI", "MLAM", "MYCE", "MFER") ~ "MYCE",
-    code %in% c("IRIG", "ISIN", "ISOP") ~ "ISOP",
-    code %in% c("OCUL", "ODIF") ~ "OCUL",
-    code %in% c("SHYA", "SBOU") ~ "SOLE",
-    code %in% c("SCOL", "SCUB", "SLAC", "SWEL") ~ "SCOL",
-    code %in% c("OFAV", "OFRA", "OANN") ~ "ORBI",
-    TRUE ~ code
-  )
-}
+# aggregate_species_code <- function(code) {
+#   case_when(
+#     code %in% c("AFRA", "AGAR", "AGRA", "AHUM", "ALAM") ~ "AGAR",
+#     code %in% c("MALI", "MLAM", "MYCE", "MFER") ~ "MYCE",
+#     code %in% c("IRIG", "ISIN", "ISOP") ~ "ISOP",
+#     code %in% c("OCUL", "ODIF") ~ "OCUL",
+#     code %in% c("SHYA", "SBOU") ~ "SOLE",
+#     code %in% c("SCOL", "SCUB", "SLAC", "SWEL") ~ "SCOL",
+#     code %in% c("OFAV", "OFRA", "OANN") ~ "ORBI",
+#     TRUE ~ code
+#   )
+# }
 
 # ---------- 2) Read, convert, aggregate ----------
 out <- out
-
-out2 %>%
-  filter(host_species == "stokesii") %>%
-  count(era)
 
 stopifnot(SPECIES_COL %in% names(out))
 
 out2 <- out %>%
   mutate(
     Species_raw = .data[[SPECIES_COL]],
-    Species     = aggregate_species_code(code_from_species(Species_raw))
+    Species     = code_from_species(Species_raw)
   )
 
-out2 %>%
-  count(Species, era) %>%
-  filter(Species == "DSTO")
 
 # ---------- 3) Quick sanity checks ----------
 cat("\nTop Species after aggregation:\n")
@@ -705,15 +698,11 @@ jsd_dist <- function(p, q) {
 
 # ---------- Read + prep ----------
 dat <- out2 %>%
-  filter(subregion == "Upper Keys") %>%
+  #filter(subregion == "Upper Keys") %>%
   mutate(
     era = factor(era, levels = c("2001-03", "2019-21", "2024"), ordered = TRUE),
     depth = as.numeric(depth)
   )
-
-out2 %>%
-  count(Species, era) %>%
-  filter(Species == "DSTO")
 
 
 clades <- c("A","B","C","D","G")
@@ -849,5 +838,435 @@ wide
 write_csv(wide, file = "shuff_metrics.csv")
 
 
+```
+
+
+```{r}
+# count number of samples of each species in each era in each subregion
+sppcounts <- dat %>%
+  group_by(Species, subregion, era) %>%
+  summarize(n = n())
+
+ggplot(sppcounts, aes(x = era, y = n)) +
+  geom_col() +
+  facet_grid(subregion ~ Species, scales = "free_y")
+
+spptots <- sppcounts %>%
+  filter(subregion != "Marquesas",
+         Species != "UNKN") %>%
+  filter(n > 3) %>%
+  group_by(Species, subregion) %>%
+  filter(n() > 1)
+
+View(spptots)
+sum(spptots$n)
+n_distinct(spptots$Species)
+
+# ============================================================
+# START FROM YOUR EXISTING dat OBJECT
+# Assumes dat already contains:
+# Species, era, subregion, depth, and clade columns A,B,C,D,G
+# ============================================================
+
+# ---------- exclude Marquesas ----------
+dat2 <- dat %>%
+  filter(subregion != "Marquesas")
+
+clades <- c("A", "B", "C", "D", "G")
+
+# Optional labels for plotting
+clade_labs <- c(
+  A = "Clade A",
+  B = "Clade B",
+  C = "Clade C",
+  D = "Clade D",
+  G = "Clade G"
+)
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+tv_dist <- function(p, q) {
+  0.5 * sum(abs(p - q))
+}
+
+hellinger_dist <- function(p, q) {
+  sqrt(0.5 * sum((sqrt(p) - sqrt(q))^2))
+}
+
+jsd_dist <- function(p, q) {
+  p <- as.numeric(p)
+  q <- as.numeric(q)
+  m <- 0.5 * (p + q)
+
+  kl <- function(a, b) {
+    keep <- a > 0
+    sum(a[keep] * (log2(a[keep]) - log2(b[keep])))
+  }
+
+  sqrt(0.5 * kl(p, m) + 0.5 * kl(q, m))
+}
+
+mean_comp <- function(df, w = NULL, clades) {
+  X <- df %>%
+    dplyr::select(dplyr::all_of(clades)) %>%
+    as.matrix()
+
+  storage.mode(X) <- "double"
+
+  if (is.null(w)) w <- rep(1, nrow(df))
+  if (sum(w, na.rm = TRUE) == 0) w <- rep(1, nrow(df))
+  w <- w / sum(w, na.rm = TRUE)
+
+  p <- colSums(X * w, na.rm = TRUE)
+
+  if (sum(p) == 0) {
+    p <- rep(NA_real_, length(clades))
+    names(p) <- clades
+    return(p)
+  }
+
+  p / sum(p)
+}
+
+make_depth_bins <- function(df, n_bins = 6) {
+  qs <- seq(0, 1, length.out = n_bins + 1)
+  edges <- quantile(df$depth, probs = qs, na.rm = TRUE)
+  edges <- unique(as.numeric(edges))
+
+  if (length(edges) <= 2) return(NULL)
+
+  cut(df$depth, breaks = edges, include.lowest = TRUE)
+}
+
+get_depth_weights <- function(subg, target_bins) {
+  target <- tibble(depth_bin = target_bins) %>%
+    count(depth_bin, name = "n_target") %>%
+    mutate(p_target = n_target / sum(n_target))
+
+  src <- subg %>%
+    count(depth_bin, name = "n_src") %>%
+    mutate(p_src = n_src / sum(n_src))
+
+  wt_tbl <- target %>%
+    left_join(src, by = "depth_bin") %>%
+    mutate(
+      p_src = replace_na(p_src, 0),
+      w_bin = p_target / ifelse(p_src == 0, NA_real_, p_src),
+      w_bin = ifelse(is.na(w_bin) | is.infinite(w_bin), 0, w_bin)
+    )
+
+  subg %>%
+    left_join(wt_tbl %>% dplyr::select(depth_bin, w_bin), by = "depth_bin") %>%
+    mutate(w_bin = replace_na(w_bin, 0)) %>%
+    pull(w_bin)
+}
+
+# ============================================================
+# CORE FUNCTION
+# Uses different standardization approaches by subregion:
+# - Upper Keys   -> depth standardized
+# - Dry Tortugas -> not depth standardized
+# - all others   -> excluded unless you choose to keep them
+# ============================================================
+
+compute_subregion_outputs <- function(dat,
+                                      eras = c("2001-03", "2019-21", "2024"),
+                                      clades = c("A", "B", "C", "D", "G"),
+                                      min_n = 4,
+                                      n_bins = 6) {
+
+  dat_use <- dat %>%
+    filter(subregion %in% c("Upper Keys", "Dry Tortugas")) %>%
+    filter(era %in% eras) %>%
+    mutate(
+      era = factor(era, levels = eras, ordered = TRUE)
+    )
+
+  split_dat <- dat_use %>%
+    group_by(subregion, Species) %>%
+    group_split()
+
+  group_keys <- dat_use %>%
+    group_by(subregion, Species) %>%
+    group_keys()
+
+  pair_df <- tibble(
+    era1 = c("2001-03", "2019-21", "2001-03"),
+    era2 = c("2019-21", "2024", "2024")
+  )
+
+  out_comp <- vector("list", length(split_dat))
+  out_dist <- vector("list", length(split_dat))
+
+  for (i in seq_along(split_dat)) {
+    g <- split_dat[[i]]
+    key <- group_keys[i, , drop = FALSE]
+
+    this_subregion <- unique(g$subregion)
+    use_depth_std <- this_subregion == "Upper Keys"
+
+    # require at least 2 eras with enough observations
+    era_counts <- g %>% count(era, name = "n")
+    if (sum(era_counts$n >= min_n) < 2) next
+
+    # --------------------------------------------------------
+    # COMPOSITION BY ERA
+    # --------------------------------------------------------
+    if (use_depth_std) {
+      g_depth <- g %>% filter(!is.na(depth))
+      if (nrow(g_depth) == 0) next
+
+      g_depth <- g_depth %>%
+        mutate(depth_bin = make_depth_bins(., n_bins = n_bins))
+
+      if (all(is.na(g_depth$depth_bin))) next
+
+      target_bins <- g_depth$depth_bin
+
+      comp_one <- map_dfr(eras, function(e) {
+        subg <- g_depth %>% filter(era == e)
+
+        if (nrow(subg) < min_n) {
+          tibble(
+            era = e,
+            n = nrow(subg),
+            depth_std = TRUE,
+            !!!setNames(as.list(rep(NA_real_, length(clades))), clades)
+          )
+        } else {
+          w <- get_depth_weights(subg, target_bins = target_bins)
+          p <- mean_comp(subg, w = w, clades = clades)
+
+          tibble(
+            era = e,
+            n = nrow(subg),
+            depth_std = TRUE,
+            !!!as.list(p)
+          )
+        }
+      })
+
+      dist_one <- map_dfr(seq_len(nrow(pair_df)), function(j) {
+        e1 <- pair_df$era1[j]
+        e2 <- pair_df$era2[j]
+
+        g1 <- g_depth %>% filter(era == e1)
+        g2 <- g_depth %>% filter(era == e2)
+
+        if (nrow(g1) < min_n || nrow(g2) < min_n) {
+          tibble(
+            era1 = e1,
+            era2 = e2,
+            n1 = nrow(g1),
+            n2 = nrow(g2),
+            depth_std = TRUE,
+            TV = NA_real_,
+            Hellinger = NA_real_,
+            JSD = NA_real_
+          )
+        } else {
+          w1 <- get_depth_weights(g1, target_bins = target_bins)
+          w2 <- get_depth_weights(g2, target_bins = target_bins)
+
+          p1 <- mean_comp(g1, w = w1, clades = clades)
+          p2 <- mean_comp(g2, w = w2, clades = clades)
+
+          tibble(
+            era1 = e1,
+            era2 = e2,
+            n1 = nrow(g1),
+            n2 = nrow(g2),
+            depth_std = TRUE,
+            TV = tv_dist(p1, p2),
+            Hellinger = hellinger_dist(p1, p2),
+            JSD = jsd_dist(p1, p2)
+          )
+        }
+      })
+
+    } else {
+      comp_one <- map_dfr(eras, function(e) {
+        subg <- g %>% filter(era == e)
+
+        if (nrow(subg) < min_n) {
+          tibble(
+            era = e,
+            n = nrow(subg),
+            depth_std = FALSE,
+            !!!setNames(as.list(rep(NA_real_, length(clades))), clades)
+          )
+        } else {
+          p <- mean_comp(subg, clades = clades)
+
+          tibble(
+            era = e,
+            n = nrow(subg),
+            depth_std = FALSE,
+            !!!as.list(p)
+          )
+        }
+      })
+
+      dist_one <- map_dfr(seq_len(nrow(pair_df)), function(j) {
+        e1 <- pair_df$era1[j]
+        e2 <- pair_df$era2[j]
+
+        g1 <- g %>% filter(era == e1)
+        g2 <- g %>% filter(era == e2)
+
+        if (nrow(g1) < min_n || nrow(g2) < min_n) {
+          tibble(
+            era1 = e1,
+            era2 = e2,
+            n1 = nrow(g1),
+            n2 = nrow(g2),
+            depth_std = FALSE,
+            TV = NA_real_,
+            Hellinger = NA_real_,
+            JSD = NA_real_
+          )
+        } else {
+          p1 <- mean_comp(g1, clades = clades)
+          p2 <- mean_comp(g2, clades = clades)
+
+          tibble(
+            era1 = e1,
+            era2 = e2,
+            n1 = nrow(g1),
+            n2 = nrow(g2),
+            depth_std = FALSE,
+            TV = tv_dist(p1, p2),
+            Hellinger = hellinger_dist(p1, p2),
+            JSD = jsd_dist(p1, p2)
+          )
+        }
+      })
+    }
+
+    out_comp[[i]] <- bind_cols(key[rep(1, nrow(comp_one)), , drop = FALSE], comp_one)
+    out_dist[[i]] <- bind_cols(key[rep(1, nrow(dist_one)), , drop = FALSE], dist_one)
+  }
+
+  list(
+    composition = bind_rows(out_comp),
+    distances   = bind_rows(out_dist)
+  )
+}
+
+# ============================================================
+# RUN
+# ============================================================
+res_subregion <- compute_subregion_outputs(
+  dat = dat2,
+  eras = c("2001-03", "2019-21", "2024"),
+  clades = clades,
+  min_n = 4,
+  n_bins = 6
+)
+
+comp_subregion <- res_subregion$composition
+dist_subregion <- res_subregion$distances
+
+# ============================================================
+# LONG FORMAT FOR PLOTTING
+# ============================================================
+comp_subregion_long <- comp_subregion %>%
+  pivot_longer(
+    cols = all_of(clades),
+    names_to = "Clade",
+    values_to = "Prop"
+  ) %>%
+  mutate(
+    Clade = factor(Clade, levels = clades, labels = clade_labs[clades]),
+    era = factor(era, levels = c("2001-03", "2019-21", "2024"), ordered = TRUE)
+  )
+
+dist_subregion <- dist_subregion %>%
+  mutate(
+    contrast = factor(
+      paste0(era1, " \u2192 ", era2),
+      levels = c("2001-03 → 2019-21", "2019-21 → 2024", "2001-03 → 2024")
+    )
+  )
+
+# ============================================================
+# PLOTS
+# ============================================================
+
+# ---- Composition plot ----
+p_comp_subregion <- ggplot(
+  comp_subregion_long,
+  aes(x = era, y = Prop, fill = Clade)
+) +
+  geom_col(width = 0.8, color = "white", linewidth = 0.2) +
+  facet_grid(subregion ~ Species) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    x = NULL,
+    y = "Symbiont genus composition",
+    fill = "Symbiont genus"
+  ) +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.background = element_blank()
+  )
+
+p_comp_subregion
+
+# ---- Hellinger distance plot ----
+p_dist_subregion <- ggplot(
+  dist_subregion,
+  aes(x = contrast, y = Hellinger)
+) +
+  geom_col(width = 0.7) +
+  facet_grid(subregion ~ Species) +
+  labs(
+    x = NULL,
+    y = "Hellinger distance"
+  ) +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.background = element_blank()
+  )
+
+p_dist_subregion
+
+# ============================================================
+# OPTIONAL: ADD LABEL FOR STANDARDIZATION METHOD
+# ============================================================
+comp_subregion_long <- comp_subregion_long %>%
+  mutate(method = ifelse(depth_std, "Depth-standardized", "Not depth-standardized"))
+
+dist_subregion <- dist_subregion %>%
+  mutate(method = ifelse(depth_std, "Depth-standardized", "Not depth-standardized"))
+
+# Example alternate distance plot with method in strip label
+p_dist_subregion2 <- ggplot(
+  dist_subregion,
+  aes(x = contrast, y = Hellinger)
+) +
+  geom_col(width = 0.7) +
+  facet_grid(subregion + method ~ Species) +
+  labs(
+    x = NULL,
+    y = "Hellinger distance"
+  ) +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.background = element_blank()
+  )
+
+p_dist_subregion2
+
+# ============================================================
+# EXPORT
+# ============================================================
+write_csv(comp_subregion, "depthmix_composition_by_subregion_species.csv")
+write_csv(dist_subregion, "depthmix_hellinger_by_subregion_species.csv")
 ```
 
