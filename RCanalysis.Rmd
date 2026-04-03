@@ -1268,5 +1268,64 @@ p_dist_subregion2
 # ============================================================
 write_csv(comp_subregion, "depthmix_composition_by_subregion_species.csv")
 write_csv(dist_subregion, "depthmix_hellinger_by_subregion_species.csv")
+
+
+
+dist_subregion
+
+comp_subregion_long %>%
+  filter(Clade == "Clade D", n > 0, !is.na(Prop)) %>%
+  group_by(subregion, era) %>%
+  summarize(D75 = n_distinct(Species[Prop > 0.75]),
+            D2575 = n_distinct(Species[Prop > 0.25 & Prop < 0.75]),
+            D25 = n_distinct(Species[Prop < 0.25]))
+
+comp_subregion_long %>%
+  filter(n > 0, subregion == "Upper Keys", era == "2001-03", Clade == "Clade D") 
+
+
+
+
+
+comp_subregion_long %>%
+  filter(Clade == "Clade D", n > 0, !is.na(Prop), !Species %in% c("DSTO", "UNKN")) %>%
+  group_by(subregion, Species, era) %>%
+  summarize(Prop = mean(Prop), .groups = "drop") %>%
+  arrange(subregion, Species, era) %>%
+  group_by(subregion, Species) %>%
+  summarize(
+    delta = last(Prop) - first(Prop),
+    direction = case_when(
+      delta >  0 ~ "increase",
+      delta <  0 ~ "decrease",
+      TRUE       ~ "no change"
+    ),
+    .groups = "drop"
+  ) %>%
+  group_by(subregion, direction) %>%
+  summarize(n_species = n(), .groups = "drop")
+
+
+
+
+
+comp_subregion_long %>%
+  filter(Clade == "Clade D", n > 0, !is.na(Prop), !Species %in% c("DSTO", "UNKN")) %>%
+  group_by(subregion, Species, era) %>%
+  summarize(Prop = mean(Prop), .groups = "drop") %>%
+  arrange(subregion, Species, era) %>%
+  group_by(subregion, Species) %>%
+  summarize(
+    Prop_start = first(Prop),
+    Prop_end   = last(Prop),
+    delta      = Prop_end - Prop_start,
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = Prop_start, y = Prop_end)) + 
+    geom_point(aes(color = subregion)) +
+    geom_text(aes(label = Species, color = subregion)) +
+    geom_abline(aes(slope = 1, intercept = 0), linetype = 2) +
+    coord_fixed(xlim = c(0,1), ylim = c(0,1))# +
+    #coord_trans(x = "sqrt", y = "sqrt")
 ```
 
