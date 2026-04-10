@@ -436,6 +436,45 @@ out <- clade_wide %>%
   relocate(dominant_clade, .after = depth)
 
 out
+
+######
+plot_dat <- out %>%
+  mutate(
+    species = toupper(str_c(str_sub(host_genus, 1, 1), str_sub(host_species, 1, 3), sep = ""))
+  ) %>%
+  group_by(species, era) %>%
+  mutate(sample_id = row_number()) %>%
+  ungroup() %>%
+  pivot_longer(
+    cols = c(A, B, C, D, G),
+    names_to = "Clade",
+    values_to = "Prop"
+  ) %>%
+  mutate(
+    Clade = factor(Clade, levels = c("A", "B", "C", "D", "G"))
+  )
+
+ggplot(plot_dat, aes(x = factor(sample_id), y = Prop, fill = Clade)) +
+  geom_col(width = 0.95) +
+  facet_grid(
+    species ~ era,
+    scales = "free_x",
+    space = "free_x"
+  ) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  labs(
+    x = NULL,
+    y = "Symbiont proportion",
+    fill = "Clade"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.background = element_blank(),
+    panel.spacing.x = unit(0.5, "lines"),
+    panel.spacing.y = unit(0.5, "lines")
+  )
 ```
 
 ```{r clade_nmds, fig.width=9, fig.height=6}
@@ -546,6 +585,7 @@ out
 write_csv(out, file = "out.csv")
 ```
 
+#old?
 ```{r}
 # AGG SPECIES FIRST
 
@@ -840,7 +880,7 @@ write_csv(wide, file = "shuff_metrics.csv")
 
 ```
 
-
+#new?
 ```{r}
 # count number of samples of each species in each era in each subregion
 sppcounts <- dat %>%
@@ -1274,6 +1314,14 @@ write_csv(dist_subregion, "depthmix_hellinger_by_subregion_species.csv")
 dist_subregion
 
 comp_subregion_long %>%
+  filter(n > 0, !is.na(Prop)) %>%
+  ggplot(aes(x = era, y = Prop)) +
+  geom_bar(aes(fill = Clade), stat = "identity") +
+  facet_grid(subregion ~ Species) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+comp_subregion_long %>%
   filter(Clade == "Clade D", n > 0, !is.na(Prop)) %>%
   group_by(subregion, era) %>%
   summarize(D75 = n_distinct(Species[Prop > 0.75]),
@@ -1327,5 +1375,38 @@ comp_subregion_long %>%
     geom_abline(aes(slope = 1, intercept = 0), linetype = 2) +
     coord_fixed(xlim = c(0,1), ylim = c(0,1))# +
     #coord_trans(x = "sqrt", y = "sqrt")
+
+
+
+
+
+
+dist_subregion
+rich <- read_csv("data/rossSpeciesShuffCoef.csv") %>%
+  mutate(Species = toupper(Species))
+
+alldist <- left_join(dist_subregion, rich, by = "Species")
+
+alldist %>%
+  filter(contrast == "2019-21 → 2024") %>%
+  ggplot(aes(y = JSD, x = mean_shuffCoef)) +
+  geom_point() +
+  geom_text(aes(label = Species)) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor()
+
+allcomp <- left_join(comp_subregion, rich, by = "Species")
+
+allcomp %>%
+  filter(era == "2024") %>%
+  ggplot(aes(x = mean_propD, y = D)) +
+  geom_point() +
+  geom_text(aes(label = Species)) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor()
+
+allcomp %>%
+  filter(era == "2024") %>%
+  arrange(-D)
 ```
 
