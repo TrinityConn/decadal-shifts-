@@ -1380,7 +1380,7 @@ comp_subregion_long %>%
 
 
 
-
+saveRDS(dist_subregion, file = "dist_subregion.rds")
 dist_subregion
 rich <- read_csv("data/rossSpeciesShuffCoef.csv") %>%
   mutate(Species = toupper(Species))
@@ -1395,6 +1395,7 @@ alldist %>%
   geom_smooth(method = "lm") +
   ggpubr::stat_cor()
 
+saveRDS(comp_subregion, file = "comp_subregion.rds")
 allcomp <- left_join(comp_subregion, rich, by = "Species")
 
 allcomp %>%
